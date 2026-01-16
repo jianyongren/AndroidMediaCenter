@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.AndroidMediaCenter" parent="android:Theme.Material.Light.NoActionBar" />
+    
+    <style name="Theme.AndroidMediaCenter.FullScreen" parent="Theme.AndroidMediaCenter">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
 </resources>
