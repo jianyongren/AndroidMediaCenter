@@ -120,7 +120,12 @@ fun PlayerScreen(
     }
     
     // 监听播放状态
+    // 自动开始播放
     LaunchedEffect(exoPlayer) {
+        if (!exoPlayer.isPlaying) {
+            playerController.play()
+        }
+        
         while (true) {
             isPlaying = exoPlayer.isPlaying
             currentPosition = exoPlayer.currentPosition.toFloat()
@@ -185,13 +190,13 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.7f))
+                        .background(Color.Transparent)
                 ) {
-                    // 顶部控制栏
+                    // 顶部控制栏 - 减少高度
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(top = 8.dp, start = 16.dp, end = 16.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -206,7 +211,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(48.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.ArrowBack,
@@ -233,7 +238,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(48.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.FullscreenExit,
@@ -244,13 +249,14 @@ fun PlayerScreen(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.weight(1f))
+                    // 进一步增加视频空间，减少顶部控制栏高度
+                    Spacer(modifier = Modifier.weight(1.5f))
                     
-                    // 播放进度
+                    // 播放进度 - 进一步下移
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                            .padding(horizontal = 24.dp, vertical = 4.dp)
                     ) {
                         Slider(
                             value = currentPosition,
@@ -283,11 +289,11 @@ fun PlayerScreen(
                         }
                     }
                     
-                    // 播放控制按钮
+                    // 播放控制按钮 - 更靠近底部
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 32.dp),
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -306,7 +312,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 imageVector = when (playbackMode) {
@@ -331,7 +337,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.SkipPrevious,
@@ -352,7 +358,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.Replay10,
@@ -400,7 +406,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.Forward10,
@@ -421,7 +427,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.SkipNext,
@@ -442,7 +448,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
                                 Icons.Filled.Shuffle,
@@ -453,7 +459,8 @@ fun PlayerScreen(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(32.dp))
+                    // 最小化底部空间，让控制按钮紧贴底部
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
