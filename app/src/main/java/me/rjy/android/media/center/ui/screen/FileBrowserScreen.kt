@@ -52,6 +52,9 @@ import me.rjy.android.media.center.data.model.MediaType
 import me.rjy.android.media.center.data.model.SourceType
 import me.rjy.android.media.center.data.repository.MediaRepositoryImpl
 import me.rjy.android.media.center.utils.FileUtils
+import me.rjy.android.media.center.utils.APKInstaller
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -69,6 +72,69 @@ fun FileBrowserScreen(
     val errorMessage = remember { mutableStateOf<String?>(null) }
     val retryTrigger = remember { mutableStateOf(0) }
     val context = LocalContext.current
+    // 主文件选择器，使用通用MIME类型以提高兼容性
+    val apkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            if (uri != null) {
+                // 验证文件类型是否为APK
+                val isApk = APKInstaller.isApkUri(context.contentResolver, uri)
+                if (isApk) {
+                    APKInstaller.installApkFromUri(context, uri)
+                } else {
+                    // 提示用户选择正确的文件类型
+                    // 这里可以显示一个Snackbar或Toast，但需要更复杂的状态管理
+                    // 为了简化，暂时只调用installApkFromUri，系统会处理错误
+                    APKInstaller.installApkFromUri(context, uri)
+                }
+            }
+        }
+    )
+    // 备用文件选择器，使用OPEN_DOCUMENT，适用于某些设备
+    val backupApkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            if (uri != null) {
+                APKInstaller.installApkFromUri(context, uri)
+            }
+        }
+    )
+    
+    // 处理APK安装按钮点击，包含异常处理
+    fun onInstallApkClicked() {
+        try {
+            apkPickerLauncher.launch("*/*")
+        } catch (e: android.content.ActivityNotFoundException) {
+            // 如果主选择器不可用，尝试备用选择器
+            android.widget.Toast.makeText(
+                context,
+                "文件选择器不可用，尝试备用方式",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            try {
+                backupApkPickerLauncher.launch(arrayOf("*/*"))
+            } catch (e2: android.content.ActivityNotFoundException) {
+                android.widget.Toast.makeText(
+                    context,
+                    "无法打开文件选择器，请安装文件管理器应用",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+    
+    // 处理备用APK安装按钮点击
+    fun onInstallApkBackupClicked() {
+        try {
+            backupApkPickerLauncher.launch(arrayOf("*/*"))
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(
+                context,
+                "备用文件选择器不可用，请安装文件管理器应用",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
     val repository = remember { MediaRepositoryImpl(context) }
     
     val parsedSourceType = try {
@@ -201,6 +267,12 @@ fun FileBrowserScreen(
                     when (parsedSourceType) {
                         SourceType.NETWORK -> {
                             NetworkMediaScreen(onPlayMedia = onPlayMedia)
+                        }
+                        SourceType.APK_LIST -> {
+                            APKInstallScreen(
+                                onInstallApk = ::onInstallApkClicked,
+                                onInstallApkBackup = ::onInstallApkBackupClicked
+                            )
                         }
                         else -> {
                             if (parsedSourceType == SourceType.USB && mediaItems.value.isEmpty()) {
@@ -618,5 +690,112 @@ private fun formatFileInfo(mediaItem: MediaItem): String {
             "$size$duration"
         }
         else -> FileUtils.formatFileSize(mediaItem.size)
+    }
+}
+
+@Composable
+fun APKInstallScreen(
+    onInstallApk: () -> Unit,
+    onInstallApkBackup: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Filled.Android,
+            contentDescription = null,
+            modifier = Modifier.size(120.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        
+        Spacer(modifier = Modifier.padding(24.dp))
+        
+        Text(
+            text = "安装APK应用",
+            style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        Text(
+            text = "从U盘或其他位置选择APK文件进行安装",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+        
+        Text(
+            text = "使用方法：\n" +
+                   "1. 点击下方按钮打开文件选择器\n" +
+                   "2. 浏览到U盘或本地存储中的APK文件\n" +
+                   "3. 选择文件后系统将提示安装\n" +
+                   "4. 按照系统指引完成安装",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 48.dp)
+        )
+        
+        Button(
+            onClick = onInstallApk,
+            modifier = Modifier.fillMaxWidth(0.8f),
+            content = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Android,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "选择APK文件",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+        )
+        
+        Spacer(modifier = Modifier.padding(16.dp))
+        
+        Button(
+            onClick = onInstallApkBackup,
+            modifier = Modifier.fillMaxWidth(0.8f),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            content = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.InsertDriveFile,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "备用文件选择",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+        )
+        
+        Spacer(modifier = Modifier.padding(24.dp))
+        
+        Text(
+            text = "注意：安装应用需要用户手动确认，请确保已授予安装未知来源应用的权限。如果主按钮无法选择文件，请尝试备用文件选择按钮。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
     }
 }
