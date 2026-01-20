@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Replay10
@@ -36,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +65,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.ui.StyledPlayerView
 import kotlinx.coroutines.delay
@@ -69,6 +73,115 @@ import me.rjy.android.media.center.player.MediaPlayerController
 import me.rjy.android.media.center.player.PlaybackMode
 import me.rjy.android.media.center.player.rememberExoPlayer
 import me.rjy.android.media.center.utils.FileUtils
+
+sealed class PlayerState {
+    object IDLE : PlayerState()
+    object BUFFERING : PlayerState()
+    object READY : PlayerState()
+    object PLAYING : PlayerState()
+    object PAUSED : PlayerState()
+    data class ERROR(val error: PlaybackException?) : PlayerState()
+}
+
+@Composable
+fun BufferingIndicator(
+    modifier: Modifier = Modifier,
+    progress: Int = 0
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                color = Color.White,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = if (progress > 0) "正在缓冲... $progress%" else "正在缓冲...",
+                color = Color.White,
+                fontSize = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun ErrorOverlay(
+    modifier: Modifier = Modifier,
+    errorMessage: String?,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp)
+        ) {
+            Icon(
+                Icons.Filled.Error,
+                contentDescription = "错误",
+                tint = Color.Red,
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "播放错误",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = errorMessage ?: "未知错误",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(
+                    onClick = onBack,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Gray
+                    )
+                ) {
+                    Text(text = "返回")
+                }
+                Button(
+                    onClick = onRetry,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = "重试",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "重试")
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,16 +193,44 @@ fun PlayerScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     
+    var playerState by remember { mutableStateOf<PlayerState>(PlayerState.IDLE) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var bufferingProgress by remember { mutableIntStateOf(0) }
+    
+    var isPlayingRealTime by remember { mutableStateOf(false) }
+    
     val exoPlayer = rememberExoPlayer(
         uri = mediaUri,
         onError = { error ->
-            // 处理播放错误
+            playerState = PlayerState.ERROR(error)
+            errorMessage = error?.message ?: "未知播放错误"
+            // 自动重置错误状态（例如10秒后）
+            // 这里可以根据错误类型提供不同的处理
         },
         onPlaybackStateChanged = { state ->
-            // 播放状态变化
+            when (state) {
+                Player.STATE_IDLE -> playerState = PlayerState.IDLE
+                Player.STATE_BUFFERING -> playerState = PlayerState.BUFFERING
+                Player.STATE_READY -> {
+                    if (isPlayingRealTime) {
+                        playerState = PlayerState.PLAYING
+                    } else {
+                        playerState = PlayerState.READY
+                    }
+                }
+                Player.STATE_ENDED -> {
+                    // 播放结束，可以重置状态
+                    playerState = PlayerState.READY
+                }
+            }
         },
         onIsPlayingChanged = { isPlaying ->
-            // 播放/暂停状态变化
+            isPlayingRealTime = isPlaying
+            if (isPlaying && playerState is PlayerState.READY) {
+                playerState = PlayerState.PLAYING
+            } else if (!isPlaying && playerState is PlayerState.PLAYING) {
+                playerState = PlayerState.PAUSED
+            }
         }
     )
     
@@ -180,6 +321,47 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+            
+            // 缓冲指示器
+            AnimatedVisibility(
+                visible = playerState is PlayerState.BUFFERING,
+                enter = fadeIn(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300))
+            ) {
+                BufferingIndicator(
+                    progress = bufferingProgress,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                )
+            }
+            
+            // 错误覆盖层
+            AnimatedVisibility(
+                visible = playerState is PlayerState.ERROR,
+                enter = fadeIn(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300))
+            ) {
+                ErrorOverlay(
+                    errorMessage = errorMessage,
+                    onRetry = {
+                        // 重试逻辑：重新准备播放器
+                        exoPlayer.prepare()
+                        playerState = PlayerState.IDLE
+                        errorMessage = null
+                    },
+                    onBack = {
+                        if (isFullscreen) {
+                            isFullscreen = false
+                        } else {
+                            onNavigateBack()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.8f))
+                )
+            }
             
             // 浮动控制UI
             AnimatedVisibility(
@@ -492,6 +674,36 @@ fun PlayerScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+                
+                // 缓冲指示器（非全屏）
+                if (playerState is PlayerState.BUFFERING) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.7f))
+                    ) {
+                        BufferingIndicator(progress = bufferingProgress)
+                    }
+                }
+                
+                // 错误覆盖层（非全屏）
+                if (playerState is PlayerState.ERROR) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.8f))
+                    ) {
+                        ErrorOverlay(
+                            errorMessage = errorMessage,
+                            onRetry = {
+                                exoPlayer.prepare()
+                                playerState = PlayerState.IDLE
+                                errorMessage = null
+                            },
+                            onBack = onNavigateBack
+                        )
+                    }
+                }
                 
                 // 全屏按钮
                 Box(
