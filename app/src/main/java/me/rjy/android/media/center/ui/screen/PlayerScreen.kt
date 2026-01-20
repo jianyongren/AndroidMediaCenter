@@ -43,6 +43,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -246,7 +247,8 @@ fun EndOverlay(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
-    mediaUri: String,
+    mediaUris: List<String>,
+    currentIndex: Int = 0,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -261,8 +263,12 @@ fun PlayerScreen(
     var showControls by remember { mutableStateOf(true) }
     var controlsTimerActive by remember { mutableStateOf(true) }
     
+    var currentPlaybackMode by remember { mutableStateOf(PlaybackMode.NORMAL) }
+    var currentMediaIndex by remember { mutableIntStateOf(currentIndex) }
+    
     val exoPlayer = rememberExoPlayer(
-        uri = mediaUri,
+        uris = mediaUris,
+        currentIndex = currentIndex,
         onError = { error ->
             playerState = PlayerState.ERROR(error)
             errorMessage = error?.message ?: "未知播放错误"
@@ -295,6 +301,11 @@ fun PlayerScreen(
             } else if (!isPlaying && playerState is PlayerState.PLAYING) {
                 playerState = PlayerState.PAUSED
             }
+        },
+        onMediaItemTransition = { index ->
+            currentMediaIndex = index
+            // 如果当前播放模式是顺序播放（NORMAL）且播放到了最后一个媒体，则播放结束后不循环
+            // 对于其他模式，ExoPlayer会根据设置自动处理
         }
     )
     
@@ -302,8 +313,16 @@ fun PlayerScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableFloatStateOf(0f) }
     var duration by remember { mutableFloatStateOf(0f) }
-    var playbackMode by remember { mutableIntStateOf(0) }
+    var exoPlaybackMode by remember { mutableIntStateOf(0) }
     var isFullscreen by remember { mutableStateOf(false) }
+    
+    // 初始化MediaPlayerController的媒体数量
+    LaunchedEffect(mediaUris.size) {
+        playerController.setMediaCount(mediaUris.size)
+    }
+    
+    // 是否为单视频
+    val isSingleMedia = mediaUris.size <= 1
     
     // 检测横屏/TV自动进入全屏
     LaunchedEffect(isLandscape) {
@@ -333,7 +352,7 @@ fun PlayerScreen(
             isPlaying = exoPlayer.isPlaying
             currentPosition = exoPlayer.currentPosition.toFloat()
             duration = exoPlayer.duration.toFloat().coerceAtLeast(1f)
-            playbackMode = exoPlayer.repeatMode
+            exoPlaybackMode = exoPlayer.repeatMode
             delay(500)
         }
     }
@@ -569,15 +588,23 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 循环模式按钮
+                        // 循环模式按钮 - 整合随机播放
                         IconButton(
                             onClick = {
-                                val nextMode = when (playbackMode) {
-                                    Player.REPEAT_MODE_OFF -> PlaybackMode.REPEAT_ONE
-                                    Player.REPEAT_MODE_ONE -> PlaybackMode.REPEAT_ALL
-                                    Player.REPEAT_MODE_ALL -> PlaybackMode.SHUFFLE
-                                    else -> PlaybackMode.NORMAL
+                                // 计算下一个模式
+                                val nextMode = when (currentPlaybackMode) {
+                                    PlaybackMode.NORMAL -> {
+                                        if (isSingleMedia) PlaybackMode.REPEAT_ONE else PlaybackMode.REPEAT_ALL
+                                    }
+                                    PlaybackMode.REPEAT_ONE -> {
+                                        if (isSingleMedia) PlaybackMode.NORMAL else PlaybackMode.REPEAT_ALL
+                                    }
+                                    PlaybackMode.REPEAT_ALL -> {
+                                        if (isSingleMedia) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
+                                    }
+                                    PlaybackMode.SHUFFLE -> PlaybackMode.NORMAL
                                 }
+                                currentPlaybackMode = nextMode
                                 playerController.setPlaybackMode(nextMode)
                                 showControls = true
                                 controlsTimerActive = true
@@ -587,12 +614,18 @@ fun PlayerScreen(
                                 .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
-                                imageVector = when (playbackMode) {
-                                    Player.REPEAT_MODE_ONE -> Icons.Filled.RepeatOne
-                                    Player.REPEAT_MODE_ALL -> Icons.Filled.Repeat
-                                    else -> Icons.Filled.Repeat
+                                imageVector = when (currentPlaybackMode) {
+                                    PlaybackMode.REPEAT_ONE -> Icons.Filled.RepeatOne
+                                    PlaybackMode.REPEAT_ALL -> Icons.Filled.Repeat
+                                    PlaybackMode.SHUFFLE -> Icons.Filled.Shuffle
+                                    else -> Icons.Filled.Repeat // NORMAL模式显示普通重复图标
                                 },
-                                contentDescription = "循环模式",
+                                contentDescription = when (currentPlaybackMode) {
+                                    PlaybackMode.REPEAT_ONE -> "单曲循环"
+                                    PlaybackMode.REPEAT_ALL -> "列表循环"
+                                    PlaybackMode.SHUFFLE -> "随机播放"
+                                    else -> "顺序播放"
+                                },
                                 tint = Color.White,
                                 modifier = Modifier.size(28.dp)
                             )
@@ -603,7 +636,7 @@ fun PlayerScreen(
                         // 上一首
                         IconButton(
                             onClick = {
-                                // 实现上一首逻辑
+                                playerController.previous()
                                 showControls = true
                                 controlsTimerActive = true
                             },
@@ -642,39 +675,38 @@ fun PlayerScreen(
                         
                         Spacer(modifier = Modifier.width(24.dp))
                         
-                        // 播放/暂停/重播
-                        Button(
-                            onClick = {
-                                if (playerState is PlayerState.ENDED) {
-                                    // 重播逻辑：定位到开始位置并播放
-                                    exoPlayer.seekTo(0)
-                                    exoPlayer.play()
-                                    playerState = PlayerState.PLAYING
-                                    showControls = true
-                                    controlsTimerActive = true
-                                } else {
-                                    if (isPlaying) {
-                                        playerController.pause()
-                                    } else {
-                                        playerController.play()
-                                    }
-                                    showControls = true
-                                    controlsTimerActive = true
-                                }
-                            },
-                            modifier = Modifier.size(72.dp),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = if (playerState is PlayerState.ENDED) Icons.Filled.Refresh else if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (playerState is PlayerState.ENDED) "重播" else if (isPlaying) "暂停" else "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(36.dp)
-                            )
+                // 播放/暂停/重播
+                IconButton(
+                    onClick = {
+                        if (playerState is PlayerState.ENDED) {
+                            // 重播逻辑：定位到开始位置并播放
+                            exoPlayer.seekTo(0)
+                            exoPlayer.play()
+                            playerState = PlayerState.PLAYING
+                            showControls = true
+                            controlsTimerActive = true
+                        } else {
+                            if (isPlaying) {
+                                playerController.pause()
+                            } else {
+                                playerController.play()
+                            }
+                            showControls = true
+                            controlsTimerActive = true
                         }
+                    },
+                    modifier = Modifier.size(56.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (playerState is PlayerState.ENDED) Icons.Filled.Refresh else if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (playerState is PlayerState.ENDED) "重播" else if (isPlaying) "暂停" else "播放",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
                         
                         Spacer(modifier = Modifier.width(24.dp))
                         
@@ -702,7 +734,7 @@ fun PlayerScreen(
                         // 下一首
                         IconButton(
                             onClick = {
-                                // 实现下一首逻辑
+                                playerController.next()
                                 showControls = true
                                 controlsTimerActive = true
                             },
@@ -715,27 +747,6 @@ fun PlayerScreen(
                                 contentDescription = "下一首",
                                 tint = Color.White,
                                 modifier = Modifier.size(32.dp)
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.width(16.dp))
-                        
-                        // 随机播放
-                        IconButton(
-                            onClick = {
-                                playerController.setPlaybackMode(PlaybackMode.SHUFFLE)
-                                showControls = true
-                                controlsTimerActive = true
-                            },
-                            modifier = Modifier
-                                .size(56.dp)
-                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                        ) {
-                            Icon(
-                                Icons.Filled.Shuffle,
-                                contentDescription = "随机播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
@@ -901,26 +912,40 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 循环模式按钮
+                // 循环模式按钮 - 整合随机播放
                 IconButton(
                     onClick = {
-                        val nextMode = when (playbackMode) {
-                            Player.REPEAT_MODE_OFF -> PlaybackMode.REPEAT_ONE
-                            Player.REPEAT_MODE_ONE -> PlaybackMode.REPEAT_ALL
-                            Player.REPEAT_MODE_ALL -> PlaybackMode.SHUFFLE
-                            else -> PlaybackMode.NORMAL
+                        // 计算下一个模式
+                        val nextMode = when (currentPlaybackMode) {
+                            PlaybackMode.NORMAL -> {
+                                if (isSingleMedia) PlaybackMode.REPEAT_ONE else PlaybackMode.REPEAT_ALL
+                            }
+                            PlaybackMode.REPEAT_ONE -> {
+                                if (isSingleMedia) PlaybackMode.NORMAL else PlaybackMode.REPEAT_ALL
+                            }
+                            PlaybackMode.REPEAT_ALL -> {
+                                if (isSingleMedia) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
+                            }
+                            PlaybackMode.SHUFFLE -> PlaybackMode.NORMAL
                         }
+                        currentPlaybackMode = nextMode
                         playerController.setPlaybackMode(nextMode)
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
-                        imageVector = when (playbackMode) {
-                            Player.REPEAT_MODE_ONE -> Icons.Filled.RepeatOne
-                            Player.REPEAT_MODE_ALL -> Icons.Filled.Repeat
-                            else -> Icons.Filled.Repeat
+                        imageVector = when (currentPlaybackMode) {
+                            PlaybackMode.REPEAT_ONE -> Icons.Filled.RepeatOne
+                            PlaybackMode.REPEAT_ALL -> Icons.Filled.Repeat
+                            PlaybackMode.SHUFFLE -> Icons.Filled.Shuffle
+                            else -> Icons.Filled.Repeat // NORMAL模式显示普通重复图标
                         },
-                        contentDescription = "循环模式",
+                        contentDescription = when (currentPlaybackMode) {
+                            PlaybackMode.REPEAT_ONE -> "单曲循环"
+                            PlaybackMode.REPEAT_ALL -> "列表循环"
+                            PlaybackMode.SHUFFLE -> "随机播放"
+                            else -> "顺序播放"
+                        },
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -930,7 +955,7 @@ fun PlayerScreen(
                 // 上一首
                 IconButton(
                     onClick = {
-                        // 实现上一首逻辑
+                        playerController.previous()
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
@@ -960,7 +985,7 @@ fun PlayerScreen(
                 Spacer(modifier = Modifier.width(16.dp))
                 
                 // 播放/暂停/重播
-                Button(
+                IconButton(
                     onClick = {
                         if (playerState is PlayerState.ENDED) {
                             // 重播逻辑：定位到开始位置并播放
@@ -977,10 +1002,10 @@ fun PlayerScreen(
                             }
                         }
                     },
-                    modifier = Modifier.size(64.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
+                    modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White
                     )
                 ) {
                     Icon(
@@ -1011,7 +1036,7 @@ fun PlayerScreen(
                 // 下一首
                 IconButton(
                     onClick = {
-                        // 实现下一首逻辑
+                        playerController.next()
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
@@ -1019,22 +1044,6 @@ fun PlayerScreen(
                         Icons.Filled.SkipNext,
                         contentDescription = "下一首",
                         modifier = Modifier.size(32.dp)
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(16.dp))
-                
-                // 随机播放
-                IconButton(
-                    onClick = {
-                        playerController.setPlaybackMode(PlaybackMode.SHUFFLE)
-                    },
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Shuffle,
-                        contentDescription = "随机播放",
-                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -1060,15 +1069,23 @@ fun PlayerScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     Text(
-                        text = "URI: $mediaUri",
+                        text = "当前: ${currentMediaIndex + 1}/${mediaUris.size}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = "格式: ${FileUtils.getFileExtension(mediaUri)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (mediaUris.isNotEmpty() && currentMediaIndex < mediaUris.size) {
+                        val currentUri = mediaUris[currentMediaIndex]
+                        Text(
+                            text = "URI: $currentUri",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "格式: ${FileUtils.getFileExtension(currentUri)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             

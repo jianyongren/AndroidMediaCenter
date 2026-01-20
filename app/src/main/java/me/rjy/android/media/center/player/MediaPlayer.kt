@@ -14,10 +14,12 @@ import com.google.android.exoplayer2.upstream.DefaultDataSource
 
 @Composable
 fun rememberExoPlayer(
-    uri: String,
+    uris: List<String>,
+    currentIndex: Int = 0,
     onError: (PlaybackException?) -> Unit = {},
     onPlaybackStateChanged: (Int) -> Unit = {},
-    onIsPlayingChanged: (Boolean) -> Unit = {}
+    onIsPlayingChanged: (Boolean) -> Unit = {},
+    onMediaItemTransition: (Int) -> Unit = {}
 ): ExoPlayer {
     val context = LocalContext.current
     val exoPlayer = remember {
@@ -34,17 +36,30 @@ fun rememberExoPlayer(
                 override fun onPlayerError(error: PlaybackException) {
                     onError(error)
                 }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    super.onMediaItemTransition(mediaItem, reason)
+                    if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                        val index = currentMediaItemIndex
+                        onMediaItemTransition(index)
+                    }
+                }
             })
         }
     }
 
-    DisposableEffect(uri) {
-        val mediaItem = MediaItem.fromUri(Uri.parse(uri))
-        val dataSourceFactory = DefaultDataSource.Factory(context)
-        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(mediaItem)
-        exoPlayer.setMediaSource(mediaSource)
-        exoPlayer.prepare()
+    DisposableEffect(uris) {
+        if (uris.isNotEmpty()) {
+            val mediaItems = uris.map { MediaItem.fromUri(Uri.parse(it)) }
+            val dataSourceFactory = DefaultDataSource.Factory(context)
+            val mediaSources = mediaItems.map { mediaItem ->
+                ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(mediaItem)
+            }
+            // 设置播放列表
+            exoPlayer.setMediaSources(mediaSources, currentIndex, 0)
+            exoPlayer.prepare()
+        }
 
         onDispose {
             exoPlayer.release()
@@ -61,6 +76,18 @@ enum class PlaybackMode {
 class MediaPlayerController(
     private val exoPlayer: ExoPlayer
 ) {
+    private var currentIndex: Int = 0
+    private var mediaCount: Int = 0
+
+    fun setMediaCount(count: Int) {
+        mediaCount = count
+    }
+
+    fun getCurrentIndex(): Int = currentIndex
+    fun getMediaCount(): Int = mediaCount
+    fun hasNext(): Boolean = currentIndex < mediaCount - 1
+    fun hasPrevious(): Boolean = currentIndex > 0
+    fun isSingleMedia(): Boolean = mediaCount <= 1
     fun play() {
         exoPlayer.play()
     }
@@ -108,6 +135,24 @@ class MediaPlayerController(
                 exoPlayer.shuffleModeEnabled = true
             }
         }
+    }
+
+    fun next() {
+        if (hasNext()) {
+            exoPlayer.seekToNextMediaItem()
+            currentIndex = exoPlayer.currentMediaItemIndex
+        }
+    }
+
+    fun previous() {
+        if (hasPrevious()) {
+            exoPlayer.seekToPreviousMediaItem()
+            currentIndex = exoPlayer.currentMediaItemIndex
+        }
+    }
+
+    fun updateCurrentIndex(index: Int) {
+        currentIndex = index
     }
 
     fun getCurrentPosition(): Long = exoPlayer.currentPosition

@@ -157,7 +157,7 @@ fun MediaCenterApp() {
             val encodedUri = backStackEntry.arguments?.getString("mediaUri") ?: ""
             val mediaUri = URLDecoder.decode(encodedUri, StandardCharsets.UTF_8.name())
             PlayerScreen(
-                mediaUri = mediaUri,
+                mediaUris = listOf(mediaUri),
                 onNavigateBack = { navController.popBackStack() }
             )
         }
