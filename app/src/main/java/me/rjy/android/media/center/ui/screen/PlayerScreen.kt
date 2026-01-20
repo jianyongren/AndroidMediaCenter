@@ -314,7 +314,9 @@ fun PlayerScreen(
     var currentPosition by remember { mutableFloatStateOf(0f) }
     var duration by remember { mutableFloatStateOf(0f) }
     var exoPlaybackMode by remember { mutableIntStateOf(0) }
-    var isFullscreen by remember { mutableStateOf(false) }
+    
+    // 根据横竖屏决定是否全屏：横屏时全屏，竖屏时非全屏
+    var isFullscreen by remember { mutableStateOf(isLandscape) }
     
     // 初始化MediaPlayerController的媒体数量
     LaunchedEffect(mediaUris.size) {
@@ -324,11 +326,9 @@ fun PlayerScreen(
     // 是否为单视频
     val isSingleMedia = mediaUris.size <= 1
     
-    // 检测横屏/TV自动进入全屏
+    // 监听屏幕方向变化，更新全屏状态
     LaunchedEffect(isLandscape) {
-        if (isLandscape && !isFullscreen) {
-            isFullscreen = true
-        }
+        isFullscreen = isLandscape
     }
     
     // 控制UI自动隐藏逻辑
@@ -357,18 +357,18 @@ fun PlayerScreen(
         }
     }
     
-    // 全屏模式系统UI控制
+    // 全屏模式系统UI控制 - 根据全屏状态显示/隐藏系统栏
     LaunchedEffect(isFullscreen) {
         val window = (context as? androidx.activity.ComponentActivity)?.window
         window?.let {
             val insetsController = WindowCompat.getInsetsController(it, it.decorView)
             if (isFullscreen) {
-                // 隐藏系统状态栏和导航栏
+                // 全屏时隐藏系统状态栏和导航栏
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
                 insetsController.systemBarsBehavior = 
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                // 显示系统状态栏和导航栏
+                // 非全屏时显示系统栏
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
         }
@@ -432,11 +432,7 @@ fun PlayerScreen(
                         errorMessage = null
                     },
                     onBack = {
-                        if (isFullscreen) {
-                            isFullscreen = false
-                        } else {
-                            onNavigateBack()
-                        }
+                        onNavigateBack()
                     },
                     modifier = Modifier
                         .fillMaxSize()
@@ -460,11 +456,7 @@ fun PlayerScreen(
                         controlsTimerActive = true
                     },
                     onBack = {
-                        if (isFullscreen) {
-                            isFullscreen = false
-                        } else {
-                            onNavigateBack()
-                        }
+                        onNavigateBack()
                     },
                     modifier = Modifier
                         .fillMaxSize()
@@ -491,14 +483,10 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 返回按钮
+                        // 返回按钮 - PlayerActivity始终全屏，直接返回
                         IconButton(
                             onClick = {
-                                if (isFullscreen) {
-                                    isFullscreen = false
-                                } else {
-                                    onNavigateBack()
-                                }
+                                onNavigateBack()
                             },
                             modifier = Modifier
                                 .size(48.dp)
@@ -506,7 +494,7 @@ fun PlayerScreen(
                         ) {
                             Icon(
                                 Icons.Filled.ArrowBack,
-                                contentDescription = if (isFullscreen) "退出全屏" else "返回",
+                                contentDescription = "返回",
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -520,24 +508,8 @@ fun PlayerScreen(
                             fontWeight = FontWeight.Bold
                         )
                         
-                        // 全屏切换按钮
-                        IconButton(
-                            onClick = {
-                                isFullscreen = !isFullscreen
-                                showControls = true
-                                controlsTimerActive = true
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                        ) {
-                            Icon(
-                                Icons.Filled.FullscreenExit,
-                                contentDescription = "退出全屏",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+                        // PlayerActivity始终全屏，移除全屏切换按钮，用Spacer保持对称
+                        Spacer(modifier = Modifier.size(48.dp))
                     }
                     
                     // 进一步增加视频空间，减少顶部控制栏高度

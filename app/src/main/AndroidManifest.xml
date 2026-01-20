@@ -53,6 +53,14 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 播放器Activity，使用普通主题，屏幕方向决定沉浸式 -->
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AndroidMediaCenter"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:screenOrientation="fullSensor"
+            android:windowSoftInputMode="adjustPan" />
         <!-- 媒体扫描服务 -->
         <service
             android:name=".service.MediaScannerService"

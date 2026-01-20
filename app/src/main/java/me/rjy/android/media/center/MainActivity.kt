@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // enableEdgeToEdge()  // 移除以恢复传统状态栏显示
         
         // 检查并请求存储权限
         checkAndRequestStoragePermission()
@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MediaCenterApp() {
     val navController = rememberNavController()
+    val context = LocalContext.current
     
     NavHost(
         navController = navController,
@@ -135,8 +136,9 @@ fun MediaCenterApp() {
                     navController.navigate("fileBrowser/$sourceType")
                 },
                 onNavigateToPlayer = { mediaUri ->
-                    val encodedUri = URLEncoder.encode(mediaUri, StandardCharsets.UTF_8.name())
-                    navController.navigate("player/$encodedUri")
+                    // 启动PlayerActivity
+                    val intent = PlayerActivity.createIntentForSingleMedia(context, mediaUri)
+                    context.startActivity(intent)
                 },
                 onNavigateToSettings = {
                     navController.navigate("settings")
@@ -149,16 +151,10 @@ fun MediaCenterApp() {
                 sourceType = sourceType,
                 onNavigateBack = { navController.popBackStack() },
                 onPlayMedia = { mediaUri ->
-                    navController.navigate("player/$mediaUri")
+                    // 启动PlayerActivity
+                    val intent = PlayerActivity.createIntentForSingleMedia(context, mediaUri)
+                    context.startActivity(intent)
                 }
-            )
-        }
-        composable("player/{mediaUri}") { backStackEntry ->
-            val encodedUri = backStackEntry.arguments?.getString("mediaUri") ?: ""
-            val mediaUri = URLDecoder.decode(encodedUri, StandardCharsets.UTF_8.name())
-            PlayerScreen(
-                mediaUris = listOf(mediaUri),
-                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable("settings") {
