@@ -112,7 +112,7 @@ fun PlayerScreen(
     // 控制UI自动隐藏逻辑
     LaunchedEffect(showControls, controlsTimerActive) {
         if (showControls && controlsTimerActive) {
-            delay(3000L) // 3秒后隐藏控制UI
+            delay(5000L) // 5秒后隐藏控制UI
             if (controlsTimerActive) {
                 showControls = false
             }
@@ -131,7 +131,7 @@ fun PlayerScreen(
             currentPosition = exoPlayer.currentPosition.toFloat()
             duration = exoPlayer.duration.toFloat().coerceAtLeast(1f)
             playbackMode = exoPlayer.repeatMode
-            kotlinx.coroutines.delay(500)
+            delay(500)
         }
     }
     

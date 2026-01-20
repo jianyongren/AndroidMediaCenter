@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -42,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +57,7 @@ import me.rjy.android.media.center.data.model.SourceType
 import me.rjy.android.media.center.data.repository.MediaRepositoryImpl
 import me.rjy.android.media.center.utils.FileUtils
 import me.rjy.android.media.center.utils.APKInstaller
+import me.rjy.android.media.center.utils.URLHistoryManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.io.File
@@ -380,10 +385,64 @@ fun FileListScreen(
 fun NetworkMediaScreen(
     onPlayMedia: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val urlState = remember { mutableStateOf("") }
+    val errorState = remember { mutableStateOf<String?>(null) }
+    val historyState = remember { mutableStateOf<List<String>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+    val historyManager = remember { URLHistoryManager(context) }
+    
+    // 加载历史记录
+    LaunchedEffect(Unit) {
+        historyState.value = historyManager.getHistory()
+    }
+    
+    // 处理URL播放（保存到历史记录）
+    fun handlePlayUrl(url: String) {
+        val trimmedUrl = url.trim()
+        if (trimmedUrl.isEmpty()) {
+            errorState.value = "请输入URL"
+            return
+        }
+        // 基本URL格式验证
+        if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+            errorState.value = "URL必须以 http:// 或 https:// 开头"
+            return
+        }
+        // 编码URL并播放
+        val encodedUri = URLEncoder.encode(trimmedUrl, StandardCharsets.UTF_8.name())
+        
+        // 保存到历史记录（去重由URLHistoryManager处理）
+        coroutineScope.launch {
+            historyManager.addUrl(trimmedUrl)
+            // 更新历史记录显示
+            historyState.value = historyManager.getHistory()
+        }
+        
+        onPlayMedia(encodedUri)
+    }
+    
+    // 清除历史记录
+    fun handleClearHistory() {
+        coroutineScope.launch {
+            historyManager.clearHistory()
+            historyState.value = historyManager.getHistory()
+        }
+    }
+    
+    // 从历史记录中移除URL
+    fun handleRemoveUrl(url: String) {
+        coroutineScope.launch {
+            historyManager.removeUrl(url)
+            historyState.value = historyManager.getHistory()
+        }
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "网络媒体播放",
@@ -397,87 +456,132 @@ fun NetworkMediaScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
-        // 这里可以添加URL输入框，为了简化先使用示例URL
-        Card(
-            onClick = { 
-                val encodedUri = URLEncoder.encode("https://example.com/sample.mp4", StandardCharsets.UTF_8.name())
-                onPlayMedia(encodedUri)
+        // URL输入框
+        androidx.compose.material3.TextField(
+            value = urlState.value,
+            onValueChange = { newUrl ->
+                urlState.value = newUrl
+                errorState.value = null // 用户开始输入时清除错误
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                .padding(bottom = 8.dp),
+            placeholder = { Text("例如：https://example.com/video.mp4") },
+            singleLine = true,
+            isError = errorState.value != null,
+            supportingText = {
+                errorState.value?.let { errorText ->
+                    Text(text = errorText)
+                }
+            }
+        )
+        
+        // 播放按钮
+        Button(
+            onClick = {
+                handlePlayUrl(urlState.value)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Filled.VideoFile,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "示例网络视频",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "https://example.com/sample.mp4",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 Icon(
                     Icons.Filled.PlayArrow,
                     contentDescription = "播放",
                     modifier = Modifier.size(24.dp)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "播放")
             }
         }
         
-        Card(
-            onClick = { 
-                val encodedUri = URLEncoder.encode("https://example.com/sample.mp3", StandardCharsets.UTF_8.name())
-                onPlayMedia(encodedUri)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
+        // 历史记录区域（如果有历史记录）
+        if (historyState.value.isNotEmpty()) {
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(top = 32.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Icon(
-                    Icons.Filled.AudioFile,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "示例网络音频",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "https://example.com/sample.mp3",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "历史记录（点击播放）",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Button(
+                            onClick = { handleClearHistory() },
+                            modifier = Modifier.padding(start = 8.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Text("清除", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 历史记录列表
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(historyState.value) { historyUrl ->
+                            HistoryUrlItem(
+                                url = historyUrl,
+                                onClick = {
+                                    // 点击历史记录项，填入输入框并播放
+                                    urlState.value = historyUrl
+                                    handlePlayUrl(historyUrl)
+                                },
+                                onRemove = {
+                                    handleRemoveUrl(historyUrl)
+                                }
+                            )
+                        }
+                    }
                 }
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = "播放",
-                    modifier = Modifier.size(24.dp)
+            }
+        }
+        
+        // 提示信息
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 32.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "提示",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "• 支持HTTP和HTTPS协议的媒体文件\n" +
+                           "• 常见的视频格式：MP4、WebM、MKV等\n" +
+                           "• 常见的音频格式：MP3、AAC、OGG等\n" +
+                           "• 确保设备已连接网络\n" +
+                           "• 播放过的URL会自动保存到历史记录（最多20条）",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -797,5 +901,64 @@ fun APKInstallScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+fun HistoryUrlItem(
+    url: String,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = "播放",
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "点击播放",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "删除",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

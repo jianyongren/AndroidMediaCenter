@@ -18,10 +18,15 @@
     <!-- USB主机模式权限（用于访问U盘） -->
     <uses-feature android:name="android.hardware.usb.host" />
     <uses-permission android:name="android.permission.USB_PERMISSION" />
+    <!-- 明确声明触摸屏为可选，以支持TV设备 -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- 声明支持Leanback（TV）模式，但非必需 -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <!-- 支持横竖屏切换和TV -->
     <application
         android:allowBackup="true"
+        android:banner="@drawable/tv_banner"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -51,7 +56,8 @@
         <!-- 媒体扫描服务 -->
         <service
             android:name=".service.MediaScannerService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="mediaProcessing" />
         <!-- FileProvider用于APK安装（Android 7.0以上） -->
         <provider
             android:name="androidx.core.content.FileProvider"

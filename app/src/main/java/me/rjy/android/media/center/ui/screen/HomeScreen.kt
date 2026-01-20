@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
@@ -95,8 +98,32 @@ fun HomeScreen(
             description = "从U盘安装APK文件",
             icon = Icons.Filled.Computer,
             sourceType = SourceType.APK_LIST
-        )
+        ),
     )
+
+    val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    
+    // 检测是否为横屏、大屏或TV模式
+    val screenLayout = configuration.screenLayout
+    val isLargeScreen = (screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >= 
+                        Configuration.SCREENLAYOUT_SIZE_LARGE
+    
+    // 增强横屏检测：优先使用方向检测，备用使用宽高比检测
+    val isLandscapeByOrientation = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // 备用检测：通过屏幕宽高比判断（横屏时宽度大于高度）
+    val screenWidthDp = configuration.screenWidthDp
+    val screenHeightDp = configuration.screenHeightDp
+    val isLandscapeByAspect = screenWidthDp > screenHeightDp
+    val isLandscape = isLandscapeByOrientation || isLandscapeByAspect
+    
+    val uiMode = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+    val isTvMode = uiMode == Configuration.UI_MODE_TYPE_TELEVISION
+    
+    // 如果是TV模式、大屏设备、或横屏模式，使用两列布局
+    // 增加宽度阈值：当屏幕宽度大于等于600dp时也使用两列布局（适应大屏设备）
+    val isWideScreen = screenWidthDp >= 600
+    val useTwoColumn = isTvMode || isLargeScreen || isLandscape || isWideScreen
 
     Scaffold(
         topBar = {
@@ -126,47 +153,52 @@ fun HomeScreen(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
             
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(menuItems) { item ->
-                    HomeMenuItemCard(
-                        item = item,
-                        onClick = { onNavigateToFileBrowser(item.sourceType.name) }
-                    )
+            if (useTwoColumn) {
+                // 两列布局 - 使用固定网格（每行两个项目）
+                val chunkedItems = menuItems.chunked(2)
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    items(chunkedItems) { rowItems ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // 第一列
+                            HomeMenuItemCard(
+                                item = rowItems[0],
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    onNavigateToFileBrowser(rowItems[0].sourceType.name)
+                                }
+                            )
+                            
+                            // 第二列（如果有）
+                            if (rowItems.size > 1) {
+                                HomeMenuItemCard(
+                                    item = rowItems[1],
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        onNavigateToFileBrowser(rowItems[1].sourceType.name)
+                                    }
+                                )
+                            } else {
+                                // 单数项目时，第二列留空保持对齐
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // URL输入区域
-            Card(
-                onClick = { onNavigateToPlayer("") },
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            } else {
+                // 单列布局
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Wifi,
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "输入URL播放",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "输入网络视频或音频的URL地址",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    items(menuItems) { item ->
+                        HomeMenuItemCard(
+                            item = item,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                onNavigateToFileBrowser(item.sourceType.name)
+                            }
                         )
                     }
                 }
@@ -179,11 +211,12 @@ fun HomeScreen(
 @Composable
 fun HomeMenuItemCard(
     item: HomeMenuItem,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(
