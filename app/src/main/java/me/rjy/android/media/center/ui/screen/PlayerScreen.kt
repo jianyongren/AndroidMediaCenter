@@ -541,13 +541,13 @@ fun PlayerScreen(
                     }
                     
                     // 进一步增加视频空间，减少顶部控制栏高度
-                    Spacer(modifier = Modifier.weight(1.5f))
+                    Spacer(modifier = Modifier.weight(2.5f))
                     
                     // 播放进度 - 进一步下移
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 4.dp)
+                            .padding(horizontal = 24.dp, vertical = 0.dp)
                     ) {
                         Slider(
                             value = currentPosition,
@@ -558,24 +558,27 @@ fun PlayerScreen(
                                 controlsTimerActive = true
                             },
                             valueRange = 0f..duration,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
                             colors = androidx.compose.material3.SliderDefaults.colors(
                                 thumbColor = MaterialTheme.colorScheme.primary,
                                 activeTrackColor = MaterialTheme.colorScheme.primary,
                                 inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                             )
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
                                 text = FileUtils.formatDuration(currentPosition.toLong()),
-                                color = Color.White
+                                color = Color.White,
+                                fontSize = 12.sp
                             )
                             Text(
                                 text = FileUtils.formatDuration(duration.toLong()),
-                                color = Color.White
+                                color = Color.White,
+                                fontSize = 12.sp
                             )
                         }
                     }
@@ -584,7 +587,7 @@ fun PlayerScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
