@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -752,6 +753,7 @@ fun PlayerScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             // 播放器视图区域（可点击进入全屏）
+            // 添加状态栏高度的顶部padding，防止状态栏遮盖视频和全屏按钮
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -762,6 +764,7 @@ fun PlayerScreen(
                         showControls = true
                         controlsTimerActive = true
                     }
+                    .statusBarsPadding()
             ) {
                 AndroidView(
                     factory = { context ->
