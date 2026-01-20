@@ -80,6 +80,7 @@ sealed class PlayerState {
     object READY : PlayerState()
     object PLAYING : PlayerState()
     object PAUSED : PlayerState()
+    object ENDED : PlayerState()
     data class ERROR(val error: PlaybackException?) : PlayerState()
 }
 
@@ -183,6 +184,64 @@ fun ErrorOverlay(
     }
 }
 
+@Composable
+fun EndOverlay(
+    modifier: Modifier = Modifier,
+    onReplay: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp)
+        ) {
+            Text(
+                text = "播放结束",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(
+                    onClick = onBack,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Gray
+                    )
+                ) {
+                    Text(text = "返回")
+                }
+                Button(
+                    onClick = onReplay,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = "重播",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "重播")
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
@@ -198,6 +257,8 @@ fun PlayerScreen(
     var bufferingProgress by remember { mutableIntStateOf(0) }
     
     var isPlayingRealTime by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
+    var controlsTimerActive by remember { mutableStateOf(true) }
     
     val exoPlayer = rememberExoPlayer(
         uri = mediaUri,
@@ -219,8 +280,10 @@ fun PlayerScreen(
                     }
                 }
                 Player.STATE_ENDED -> {
-                    // 播放结束，可以重置状态
-                    playerState = PlayerState.READY
+                    // 播放结束，设置结束状态，并显示控制UI
+                    playerState = PlayerState.ENDED
+                    showControls = true
+                    controlsTimerActive = false
                 }
             }
         },
@@ -240,8 +303,6 @@ fun PlayerScreen(
     var duration by remember { mutableFloatStateOf(0f) }
     var playbackMode by remember { mutableIntStateOf(0) }
     var isFullscreen by remember { mutableStateOf(false) }
-    var showControls by remember { mutableStateOf(true) }
-    var controlsTimerActive by remember { mutableStateOf(true) }
     
     // 检测横屏/TV自动进入全屏
     LaunchedEffect(isLandscape) {
@@ -363,9 +424,37 @@ fun PlayerScreen(
                 )
             }
             
+            // 播放结束覆盖层
+            AnimatedVisibility(
+                visible = playerState is PlayerState.ENDED,
+                enter = fadeIn(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300))
+            ) {
+                EndOverlay(
+                    onReplay = {
+                        // 重播逻辑：定位到开始位置并播放
+                        exoPlayer.seekTo(0)
+                        exoPlayer.play()
+                        playerState = PlayerState.PLAYING
+                        showControls = true
+                        controlsTimerActive = true
+                    },
+                    onBack = {
+                        if (isFullscreen) {
+                            isFullscreen = false
+                        } else {
+                            onNavigateBack()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                )
+            }
+            
             // 浮动控制UI
             AnimatedVisibility(
-                visible = showControls,
+                visible = showControls || playerState is PlayerState.ENDED,
                 enter = fadeIn(animationSpec = tween(300)),
                 exit = fadeOut(animationSpec = tween(300))
             ) {
@@ -552,16 +641,25 @@ fun PlayerScreen(
                         
                         Spacer(modifier = Modifier.width(24.dp))
                         
-                        // 播放/暂停
+                        // 播放/暂停/重播
                         Button(
                             onClick = {
-                                if (isPlaying) {
-                                    playerController.pause()
+                                if (playerState is PlayerState.ENDED) {
+                                    // 重播逻辑：定位到开始位置并播放
+                                    exoPlayer.seekTo(0)
+                                    exoPlayer.play()
+                                    playerState = PlayerState.PLAYING
+                                    showControls = true
+                                    controlsTimerActive = true
                                 } else {
-                                    playerController.play()
+                                    if (isPlaying) {
+                                        playerController.pause()
+                                    } else {
+                                        playerController.play()
+                                    }
+                                    showControls = true
+                                    controlsTimerActive = true
                                 }
-                                showControls = true
-                                controlsTimerActive = true
                             },
                             modifier = Modifier.size(72.dp),
                             shape = CircleShape,
@@ -570,8 +668,8 @@ fun PlayerScreen(
                             )
                         ) {
                             Icon(
-                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (isPlaying) "暂停" else "播放",
+                                imageVector = if (playerState is PlayerState.ENDED) Icons.Filled.Refresh else if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (playerState is PlayerState.ENDED) "重播" else if (isPlaying) "暂停" else "播放",
                                 tint = Color.White,
                                 modifier = Modifier.size(36.dp)
                             )
@@ -705,6 +803,27 @@ fun PlayerScreen(
                     }
                 }
                 
+                // 播放结束覆盖层（非全屏）
+                if (playerState is PlayerState.ENDED) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.7f))
+                    ) {
+                        EndOverlay(
+                            onReplay = {
+                                // 重播逻辑：定位到开始位置并播放
+                                exoPlayer.seekTo(0)
+                                exoPlayer.play()
+                                playerState = PlayerState.PLAYING
+                                showControls = true
+                                controlsTimerActive = true
+                            },
+                            onBack = onNavigateBack
+                        )
+                    }
+                }
+                
                 // 全屏按钮
                 Box(
                     modifier = Modifier
@@ -745,6 +864,13 @@ fun PlayerScreen(
                     onValueChange = { newValue ->
                         currentPosition = newValue
                         playerController.seekTo(newValue.toLong())
+                        // 如果处于播放结束状态，开始播放
+                        if (playerState is PlayerState.ENDED) {
+                            exoPlayer.play()
+                            playerState = PlayerState.PLAYING
+                            showControls = true
+                            controlsTimerActive = true
+                        }
                     },
                     valueRange = 0f..duration,
                     modifier = Modifier.fillMaxWidth()
@@ -830,13 +956,22 @@ fun PlayerScreen(
                 
                 Spacer(modifier = Modifier.width(16.dp))
                 
-                // 播放/暂停
+                // 播放/暂停/重播
                 Button(
                     onClick = {
-                        if (isPlaying) {
-                            playerController.pause()
+                        if (playerState is PlayerState.ENDED) {
+                            // 重播逻辑：定位到开始位置并播放
+                            exoPlayer.seekTo(0)
+                            exoPlayer.play()
+                            playerState = PlayerState.PLAYING
+                            showControls = true
+                            controlsTimerActive = true
                         } else {
-                            playerController.play()
+                            if (isPlaying) {
+                                playerController.pause()
+                            } else {
+                                playerController.play()
+                            }
                         }
                     },
                     modifier = Modifier.size(64.dp),
@@ -846,8 +981,8 @@ fun PlayerScreen(
                     )
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        imageVector = if (playerState is PlayerState.ENDED) Icons.Filled.Refresh else if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (playerState is PlayerState.ENDED) "重播" else if (isPlaying) "暂停" else "播放",
                         modifier = Modifier.size(32.dp)
                     )
                 }
